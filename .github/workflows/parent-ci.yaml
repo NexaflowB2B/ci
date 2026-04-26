@@ -111,10 +111,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare Image Metadata
+        id: prep
+        run: |
+          # Lowercase the repository name for Docker compliance
+          IMAGE_ID=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          # Get the 5-character short SHA
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-5)
+          echo "image_name=${IMAGE_ID}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
       - name: Build Docker Image
         id: docker_build
         continue-on-error: true
-        run: docker build -t ghcr.io/${{ github.repository }}:latest .
+        run: |
+          docker build -t ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }} \
+                       -t ${{ steps.prep.outputs.image_name }}:latest .
 
       - name: Notify Docker Build Failure
         if: steps.docker_build.outcome == 'failure'
@@ -127,7 +139,7 @@ jobs:
           gmail_username: ${{ secrets.EMAIL_USERNAME }}
           gmail_app_password: ${{ secrets.EMAIL_PASSWORD }}
           notify_email_to: ${{ secrets.DEVOPS_EMAIL }}
-          docker_image: ghcr.io/${{ github.repository }}
+          docker_image: ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }}
 
       - name: Halt on Docker Build Failure
         if: steps.docker_build.outcome == 'failure'
@@ -139,7 +151,7 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository }}:latest
+          image-ref: ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }}
           format: 'sarif'
           output: 'trivy.sarif'
           exit-code: 1
@@ -171,7 +183,7 @@ jobs:
           gmail_username: ${{ secrets.EMAIL_USERNAME }}
           gmail_app_password: ${{ secrets.EMAIL_PASSWORD }}
           notify_email_to: ${{ secrets.DEVOPS_EMAIL }}
-          docker_image: ghcr.io/${{ github.repository }}
+          docker_image: ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }}
 
       - name: Halt on Trivy Failure
         if: steps.trivy.outcome == 'failure'
@@ -181,7 +193,9 @@ jobs:
       - name: Push Docker Image
         id: docker_push
         continue-on-error: true
-        run: docker push ghcr.io/${{ github.repository }}:latest
+        run: |
+          docker push ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }}
+          docker push ${{ steps.prep.outputs.image_name }}:latest
 
       - name: Notify Docker Push Failure
         if: steps.docker_push.outcome == 'failure'
@@ -194,7 +208,7 @@ jobs:
           gmail_username: ${{ secrets.EMAIL_USERNAME }}
           gmail_app_password: ${{ secrets.EMAIL_PASSWORD }}
           notify_email_to: ${{ secrets.DEVOPS_EMAIL }}
-          docker_image: ghcr.io/${{ github.repository }}
+          docker_image: ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }}
 
       - name: Halt on Docker Push Failure
         if: steps.docker_push.outcome == 'failure'
@@ -212,4 +226,4 @@ jobs:
           gmail_username: ${{ secrets.EMAIL_USERNAME }}
           gmail_app_password: ${{ secrets.EMAIL_PASSWORD }}
           notify_email_to: ${{ secrets.DEVOPS_EMAIL }}
-          docker_image: ghcr.io/${{ github.repository }}
+          docker_image: ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }}
