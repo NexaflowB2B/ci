@@ -126,8 +126,7 @@ jobs:
         id: docker_build
         continue-on-error: true
         run: |
-          docker build -t ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }} \
-                       -t ${{ steps.prep.outputs.image_name }}:latest .
+          docker build -t ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }} .
 
       - name: Notify Docker Build Failure
         if: steps.docker_build.outcome == 'failure'
@@ -197,7 +196,6 @@ jobs:
         continue-on-error: true
         run: |
           docker push ${{ steps.prep.outputs.image_name }}:${{ steps.prep.outputs.short_sha }}
-          docker push ${{ steps.prep.outputs.image_name }}:latest
 
       - name: Notify Docker Push Failure
         if: steps.docker_push.outcome == 'failure'
