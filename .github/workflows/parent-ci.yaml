@@ -76,8 +76,17 @@ jobs:
         with:
           args: --severity-threshold=high --sarif-file-output=snyk.sarif
 
-      - name: Upload Snyk SARIF to GitHub Security tab
+      - name: Check Snyk SARIF
         if: always()
+        run: |
+          if [ -f snyk.sarif ] && [ -s snyk.sarif ]; then
+            echo "snyk_sarif_exists=true" >> $GITHUB_ENV
+          else
+            echo "snyk_sarif_exists=false" >> $GITHUB_ENV
+          fi
+
+      - name: Upload Snyk SARIF to GitHub Security tab
+        if: env.snyk_sarif_exists == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk.sarif
@@ -136,18 +145,17 @@ jobs:
           exit-code: 1
           severity: HIGH,CRITICAL
 
-      - name: Upload Trivy SARIF to GitHub Security tab
+      - name: Check Trivy SARIF
         if: always()
         run: |
-          if [ -f trivy.sarif ]; then
-            echo "Trivy SARIF found. Uploading..."
+          if [ -f trivy.sarif ] && [ -s trivy.sarif ]; then
+            echo "trivy_sarif_exists=true" >> $GITHUB_ENV
           else
-            echo "Trivy SARIF not found. Creating empty one to satisfy action."
-            echo '{"$schema":"https://json.schemastore.org/sarif-2.1.0-rtm.5.json","version":"2.1.0","runs":[]}' > trivy.sarif
+            echo "trivy_sarif_exists=false" >> $GITHUB_ENV
           fi
 
       - name: Upload Trivy SARIF
-        if: always()
+        if: env.trivy_sarif_exists == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy.sarif
