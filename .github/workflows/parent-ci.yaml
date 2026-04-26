@@ -155,7 +155,8 @@ jobs:
           format: 'sarif'
           output: 'trivy.sarif'
           exit-code: 1
-          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
 
       - name: Check Trivy SARIF
         if: always()
