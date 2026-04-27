@@ -2,6 +2,9 @@ name: Standard Microservice CI
 
 on:
   workflow_call:
+    secrets:
+      HELM_REPO_TOKEN:
+        required: false
 
 jobs:
   devsecops-pipeline:
@@ -10,6 +13,8 @@ jobs:
       contents: read
       packages: write
       security-events: write # Required to upload SARIF files
+    env:
+      HELM_REPO_TOKEN: ${{ secrets.HELM_REPO_TOKEN }}
     
     steps:
       - name: Checkout Code
@@ -216,23 +221,23 @@ jobs:
 
       # ── 6. Success Notification ─────────────────────────────────────────────
       - name: Validate Helm Repo Token
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.HELM_REPO_TOKEN == ''
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HELM_REPO_TOKEN == ''
         shell: bash
         run: |
           echo "::error::Missing HELM_REPO_TOKEN secret. Add a repository or organization secret named HELM_REPO_TOKEN with write access to NexaflowB2B/nexaflow-helm."
           exit 1
 
       - name: Checkout Helm Repository
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.HELM_REPO_TOKEN != ''
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HELM_REPO_TOKEN != ''
         uses: actions/checkout@v4
         with:
           repository: NexaflowB2B/nexaflow-helm
-          token: ${{ secrets.HELM_REPO_TOKEN }}
+          token: ${{ env.HELM_REPO_TOKEN }}
           ref: main
           path: helm-repo
 
       - name: Install yq
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.HELM_REPO_TOKEN != ''
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HELM_REPO_TOKEN != ''
         shell: bash
         run: |
           YQ_VERSION=v4.44.3
@@ -241,7 +246,7 @@ jobs:
           yq --version
 
       - name: Update values-dev image tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.HELM_REPO_TOKEN != ''
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HELM_REPO_TOKEN != ''
         id: update_helm_values
         shell: bash
         run: |
@@ -264,7 +269,7 @@ jobs:
           fi
 
       - name: Commit and push Helm tag update
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.HELM_REPO_TOKEN != '' && steps.update_helm_values.outputs.changed == 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HELM_REPO_TOKEN != '' && steps.update_helm_values.outputs.changed == 'true'
         shell: bash
         run: |
           APP_NAME="${{ github.event.repository.name }}"
