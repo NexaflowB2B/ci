@@ -215,6 +215,91 @@ jobs:
         run: exit 1
 
       # ── 6. Success Notification ─────────────────────────────────────────────
+      - name: Checkout Helm Repository
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/checkout@v4
+        with:
+          repository: NexaflowB2B/nexaflow-helm
+          token: ${{ secrets.HELM_REPO_TOKEN }}
+          ref: main
+          path: helm-repo
+
+      - name: Update values-dev image tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: update_helm_values
+        shell: bash
+        run: |
+          APP_NAME="${{ github.event.repository.name }}"
+          IMAGE_TAG="${{ steps.prep.outputs.short_sha }}"
+          VALUES_FILE="helm-repo/apps/${APP_NAME}/values-dev.yaml"
+
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "::error::Missing Helm values file: $VALUES_FILE"
+            exit 1
+          fi
+
+          python3 - "$VALUES_FILE" "$IMAGE_TAG" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          path = Path(sys.argv[1])
+          new_tag = sys.argv[2]
+          lines = path.read_text().splitlines()
+
+          image_idx = next((i for i, line in enumerate(lines) if re.match(r'^image:\s*$', line)), None)
+
+          if image_idx is None:
+              if lines and lines[-1].strip():
+                  lines.append('')
+              lines.extend([
+                  'image:',
+                  f'  tag: "{new_tag}"',
+              ])
+          else:
+              block_end = image_idx + 1
+              while block_end < len(lines):
+                  current = lines[block_end]
+                  if current.strip() == '':
+                      block_end += 1
+                      continue
+                  if current.startswith(' ') or current.startswith('\t'):
+                      block_end += 1
+                      continue
+                  break
+
+              tag_updated = False
+              for idx in range(image_idx + 1, block_end):
+                  if re.match(r'^\s{2}tag:\s*', lines[idx]):
+                      lines[idx] = f'  tag: "{new_tag}"'
+                      tag_updated = True
+                      break
+
+              if not tag_updated:
+                  lines.insert(block_end, f'  tag: "{new_tag}"')
+
+          path.write_text('\n'.join(lines) + '\n')
+          PY
+
+          if git -C helm-repo diff --quiet -- "apps/${APP_NAME}/values-dev.yaml"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push Helm tag update
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.update_helm_values.outputs.changed == 'true'
+        shell: bash
+        run: |
+          APP_NAME="${{ github.event.repository.name }}"
+          IMAGE_TAG="${{ steps.prep.outputs.short_sha }}"
+
+          git -C helm-repo config user.name "github-actions[bot]"
+          git -C helm-repo config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C helm-repo add "apps/${APP_NAME}/values-dev.yaml"
+          git -C helm-repo commit -m "chore(${APP_NAME}): update dev image tag to ${IMAGE_TAG}"
+          git -C helm-repo push origin main
+
       - name: Notify Success
         if: success()
         uses: NexaflowB2B/ci/.github/actions/notify@main
