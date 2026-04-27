@@ -224,6 +224,15 @@ jobs:
           ref: main
           path: helm-repo
 
+      - name: Install yq
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          YQ_VERSION=v4.44.3
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
       - name: Update values-dev image tag
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: update_helm_values
@@ -238,48 +247,8 @@ jobs:
             exit 1
           fi
 
-          python3 - "$VALUES_FILE" "$IMAGE_TAG" <<'PY'
-          from pathlib import Path
-          import re
-          import sys
-
-          path = Path(sys.argv[1])
-          new_tag = sys.argv[2]
-          lines = path.read_text().splitlines()
-
-          image_idx = next((i for i, line in enumerate(lines) if re.match(r'^image:\s*$', line)), None)
-
-          if image_idx is None:
-              if lines and lines[-1].strip():
-                  lines.append('')
-              lines.extend([
-                  'image:',
-                  f'  tag: "{new_tag}"',
-              ])
-          else:
-              block_end = image_idx + 1
-              while block_end < len(lines):
-                  current = lines[block_end]
-                  if current.strip() == '':
-                      block_end += 1
-                      continue
-                  if current.startswith(' ') or current.startswith('\t'):
-                      block_end += 1
-                      continue
-                  break
-
-              tag_updated = False
-              for idx in range(image_idx + 1, block_end):
-                  if re.match(r'^\s{2}tag:\s*', lines[idx]):
-                      lines[idx] = f'  tag: "{new_tag}"'
-                      tag_updated = True
-                      break
-
-              if not tag_updated:
-                  lines.insert(block_end, f'  tag: "{new_tag}"')
-
-          path.write_text('\n'.join(lines) + '\n')
-          PY
+          export IMAGE_TAG
+          yq -i '.image = (.image // {}) | .image.tag = strenv(IMAGE_TAG)' "$VALUES_FILE"
 
           if git -C helm-repo diff --quiet -- "apps/${APP_NAME}/values-dev.yaml"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
